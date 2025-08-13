@@ -18,7 +18,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 
 @Entity
-@Table(name = "daily_balance")
+@Table(name = "daily_balance",schema = "payment")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
