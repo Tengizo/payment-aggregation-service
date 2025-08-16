@@ -41,4 +41,4 @@ DO UPDATE SET balance = daily_balance.balance + EXCLUDED.balance,
 - Single DB round-trip for insert + update.
 - Row-level lock on conflict ensures safe increments even with concurrent requests.
 - EXCLUDED.balance contains the incoming amount and is added to the existing balance atomically.
-- Works safely at READ COMMITTED isolation, avoiding the need for SERIALIZABLE.
+- Works safely at READ COMMITTED isolation, avoiding the need to implement Optimistic Concurrency Control (OCC) and retry mechanism.

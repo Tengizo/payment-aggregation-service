@@ -4,7 +4,11 @@ import dev.tengiz.payment.dto.request.TransactionRequest;
 import dev.tengiz.payment.dto.response.BalanceResponse;
 import dev.tengiz.payment.dto.response.TransactionResponse;
 import dev.tengiz.payment.entity.DailyBalance;
+import dev.tengiz.payment.entity.Transaction;
+import dev.tengiz.payment.exception.ConflictException;
 import dev.tengiz.payment.exception.ResourceNotFoundException;
+import dev.tengiz.payment.mapper.BalanceMapper;
+import dev.tengiz.payment.mapper.TransactionMapper;
 import dev.tengiz.payment.repository.DailyBalanceRepository;
 import dev.tengiz.payment.repository.TransactionRepository;
 import dev.tengiz.payment.service.impl.AggregationServiceImpl;
@@ -13,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
@@ -25,6 +30,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -35,6 +41,12 @@ class AggregationServiceTest {
 
     @Mock
     private DailyBalanceRepository dailyBalanceRepository;
+
+    @Spy
+    private TransactionMapper transactionMapper = new TransactionMapper();
+
+    @Spy
+    private BalanceMapper balanceMapper = new BalanceMapper();
 
     @InjectMocks
     private AggregationServiceImpl aggregationService;
@@ -72,11 +84,32 @@ class AggregationServiceTest {
         when(transactionRepository.processTransactionAtomically(
             any(), any(), any(), any(), any(), any()
         )).thenReturn(0);
+        // Simulate same amount for idempotent duplicate
+        when(transactionRepository.findById(any())).thenReturn(java.util.Optional.of(
+            Transaction.builder().amount(validRequest.getAmount()).build()
+        ));
 
         TransactionResponse response = aggregationService.processTransaction(validRequest);
 
         assertThat(response.getStatus()).isEqualTo(dev.tengiz.payment.dto.response.TransactionStatus.DUPLICATE);
         assertThat(response.getMessage()).contains("already processed");
+    }
+
+    @Test
+    void processTransaction_DuplicateWithDifferentAmount_ThrowsConflict() {
+        UUID txId = UUID.randomUUID();
+        validRequest.setTransactionId(txId.toString());
+
+        when(transactionRepository.processTransactionAtomically(
+            any(), any(), any(), any(), any(), any()
+        )).thenReturn(0);
+        when(transactionRepository.findById(eq(txId))).thenReturn(java.util.Optional.of(
+            Transaction.builder().transactionId(txId).amount(new java.math.BigDecimal("999.99")).build()
+        ));
+
+        assertThatThrownBy(() -> aggregationService.processTransaction(validRequest))
+            .isInstanceOf(ConflictException.class)
+            .hasMessageContaining("already exists with a different amount");
     }
 
     @Test

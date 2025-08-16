@@ -176,4 +176,35 @@ class TransactionControllerIntegrationTest {
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.error").value("NOT_FOUND"));
     }
+    
+    @Test
+    void processTransaction_DuplicateWithDifferentAmount_Returns409() throws Exception {
+        String transactionId = UUID.randomUUID().toString();
+        TransactionRequest first = TransactionRequest.builder()
+            .transactionId(transactionId)
+            .accountId("ACC-409")
+            .amount(new BigDecimal("123.45"))
+            .currency("USD")
+            .timestamp(OffsetDateTime.now())
+            .build();
+
+        TransactionRequest secondDifferent = TransactionRequest.builder()
+            .transactionId(transactionId)
+            .accountId("ACC-409")
+            .amount(new BigDecimal("999.99"))
+            .currency("USD")
+            .timestamp(OffsetDateTime.now())
+            .build();
+
+        mockMvc.perform(post("/transactions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(first)))
+            .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/transactions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(secondDifferent)))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.error").value("CONFLICT"));
+    }
 }

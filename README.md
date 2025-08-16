@@ -7,7 +7,7 @@ A high-performance Spring Boot microservice for processing payment transactions 
 - Framework: Spring Boot 2.7.x
 - Docker & Docker Compose
 - Database: PostgreSQL with Flyway migrations
-- Testing: JUnit 5, Mockito, H2 (in-memory)
+- Testing: JUnit 5, Mockito
 - API Documentation: OpenAPI 3.0 / Swagger UI
 - Build Tool: Maven
 

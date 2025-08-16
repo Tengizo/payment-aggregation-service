@@ -38,6 +38,7 @@ public class TransactionController {
         value = {
             @ApiResponse(responseCode = "201", description = "Transaction created successfully"),
             @ApiResponse(responseCode = "200", description = "Duplicate transaction (idempotent)"),
+            @ApiResponse(responseCode = "409", description = "Conflict: same transactionId with different amount"),
             @ApiResponse(responseCode = "400", description = "Invalid request"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
         }

@@ -1,6 +1,7 @@
 package dev.tengiz.payment.controller;
 
 import dev.tengiz.payment.dto.response.ErrorResponse;
+import dev.tengiz.payment.exception.ConflictException;
 import dev.tengiz.payment.exception.InvalidRequestException;
 import dev.tengiz.payment.exception.ResourceNotFoundException;
 import lombok.extern.slf4j.Slf4j;
@@ -87,6 +88,18 @@ public class GlobalExceptionHandler {
             .timestamp(OffsetDateTime.now())
             .build();
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    }
+
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<ErrorResponse> handleConflict(ConflictException ex) {
+        log.error("Conflict: {}", ex.getMessage());
+        ErrorResponse error = ErrorResponse.builder()
+            .status(HttpStatus.CONFLICT.value())
+            .error("CONFLICT")
+            .message(ex.getMessage())
+            .timestamp(OffsetDateTime.now())
+            .build();
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
     }
 
     @ExceptionHandler(Exception.class)

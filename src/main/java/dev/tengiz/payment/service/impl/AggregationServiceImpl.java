@@ -1,25 +1,23 @@
 package dev.tengiz.payment.service.impl;
 
-import dev.tengiz.payment.dto.CurrencyBalance;
 import dev.tengiz.payment.dto.request.TransactionRequest;
 import dev.tengiz.payment.dto.response.BalanceResponse;
 import dev.tengiz.payment.dto.response.TransactionResponse;
-import dev.tengiz.payment.dto.response.TransactionStatus;
 import dev.tengiz.payment.entity.DailyBalance;
+import dev.tengiz.payment.exception.ConflictException;
 import dev.tengiz.payment.exception.ResourceNotFoundException;
+import dev.tengiz.payment.mapper.BalanceMapper;
+import dev.tengiz.payment.mapper.TransactionMapper;
 import dev.tengiz.payment.repository.DailyBalanceRepository;
 import dev.tengiz.payment.repository.TransactionRepository;
 import dev.tengiz.payment.service.AggregationService;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalDate;
-import java.time.ZoneOffset;
-import java.util.List;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -28,6 +26,8 @@ public class AggregationServiceImpl implements AggregationService {
 
     private final TransactionRepository transactionRepository;
     private final DailyBalanceRepository dailyBalanceRepository;
+    private final TransactionMapper transactionMapper;
+    private final BalanceMapper balanceMapper;
 
     @Override
     @Transactional
@@ -36,10 +36,8 @@ public class AggregationServiceImpl implements AggregationService {
 
         UUID txId = UUID.fromString(request.getTransactionId());
 
-        // Compute business date from UTC timestamp
-        LocalDate businessDate = request.getTimestamp()
-            .atZoneSameInstant(ZoneOffset.UTC)
-            .toLocalDate();
+        // Compute business date from UTC timestamp using mapper
+        LocalDate businessDate = transactionMapper.toBusinessDate(request.getTimestamp());
 
         // Execute atomic CTE operation
         int rowsAffected = transactionRepository.processTransactionAtomically(
@@ -53,18 +51,12 @@ public class AggregationServiceImpl implements AggregationService {
 
         if (rowsAffected > 0) {
             log.info("Transaction {} processed successfully for account {}", txId, request.getAccountId());
-            return TransactionResponse.builder()
-                .transactionId(request.getTransactionId())
-                .status(TransactionStatus.CREATED)
-                .message("Transaction processed successfully")
-                .build();
+            return transactionMapper.toCreatedResponse(request);
         } else {
+            // Duplicate: verify idempotency by comparing amount with existing transaction
+            validateDuplicateAmount(txId, request);
             log.info("Duplicate transaction detected: {}", txId);
-            return TransactionResponse.builder()
-                .transactionId(request.getTransactionId())
-                .status(TransactionStatus.DUPLICATE)
-                .message("Transaction already processed")
-                .build();
+            return transactionMapper.toDuplicateResponse(request);
         }
     }
 
@@ -82,19 +74,20 @@ public class AggregationServiceImpl implements AggregationService {
             );
         }
 
-        List<CurrencyBalance> currencyBalances = balances.stream()
-            .map(db -> CurrencyBalance.builder()
-                .currency(db.getCurrency())
-                .balance(db.getBalance())
-                .build())
-            .collect(Collectors.toList());
+        log.info("Retrieved {} currency balances for account {}", balances.size(), accountId);
 
-        log.info("Retrieved {} currency balances for account {}", currencyBalances.size(), accountId);
+        return balanceMapper.toBalanceResponse(accountId, date, balances);
+    }
 
-        return BalanceResponse.builder()
-            .accountId(accountId)
-            .date(date)
-            .balances(currencyBalances)
-            .build();
+    private void validateDuplicateAmount(UUID txId, TransactionRequest request) {
+        transactionRepository.findById(txId).ifPresent(existing -> {
+            if (existing.getAmount() != null && request.getAmount() != null) {
+                if (existing.getAmount().compareTo(request.getAmount()) != 0) {
+                    throw new ConflictException(String.format(
+                        "Transaction %s already exists with a different amount. Existing=%s, Provided=%s",
+                        txId, existing.getAmount(), request.getAmount()));
+                }
+            }
+        });
     }
 }
