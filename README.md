@@ -61,6 +61,7 @@ Responses:
 - 201 Created - New transaction processed
 - 200 OK - Duplicate transaction (idempotent)
 - 400 Bad Request - Validation error
+- 409 Conflict - Same transaction id different values
 
 ### Get Daily Balance
 ```bash
